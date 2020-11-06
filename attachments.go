@@ -141,7 +141,6 @@ func (f *Fpdf) putAnnotationsAttachments() {
 			f.out("stream")
 			f.out("endstream")
 			f.out("endobj")
-			// an.appearanceObjectNumber = f.n
 			l[i].appearanceObjectNumber = f.n
 			if m[an.Attachment] { // already embedded
 				continue
