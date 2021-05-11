@@ -97,6 +97,8 @@ func fpdfNew(orientationStr, unitStr, sizeStr, fontDirStr string, size SizeType)
 	f.links = append(f.links, intLinkType{}) // links[0] is unused (1-based)
 	f.pageAttachments = make([][]annotationAttach, 0, 8)
 	f.pageAttachments = append(f.pageAttachments, []annotationAttach{}) //
+	f.highlights = make([][]Highlight, 0, 8)
+	f.highlights = append(f.highlights, []Highlight{})
 	f.aliasMap = make(map[string]string)
 	f.inHeader = false
 	f.inFooter = false
@@ -3519,6 +3521,7 @@ func (f *Fpdf) beginpage(orientationStr string, size SizeType) {
 	f.pages = append(f.pages, bytes.NewBufferString(""))
 	f.pageLinks = append(f.pageLinks, make([]linkType, 0, 0))
 	f.pageAttachments = append(f.pageAttachments, []annotationAttach{})
+	f.highlights = append(f.highlights, make([]Highlight, 0))
 	f.state = 2
 	f.x = f.lMargin
 	f.y = f.tMargin
@@ -3893,6 +3896,57 @@ func (f *Fpdf) putpages() {
 	}
 	pagesObjectNumbers := make([]int, nb+1) // 1-based
 	for n := 1; n <= nb; n++ {
+		// Annotations
+		annots := make([]string, len(f.pageLinks[n])+len(f.pageAttachments[n])+len(f.highlights[n]))
+		if len(annots) > 0 {
+			if len(f.highlights) >= n {
+				for _, hl := range f.highlights[n] {
+					f.newobj()
+					f.out(hl.String())
+					annots = append(annots, fmt.Sprintf("%d 0 R ", f.n))
+					f.out("endobj")
+				}
+			}
+
+			for _, pl := range f.pageLinks[n] {
+				f.newobj()
+				annots = append(annots, fmt.Sprintf("%d 0 R ", f.n))
+				f.outf("<</Type /Annot /Subtype /Link /Rect [%.2f %.2f %.2f %.2f] /Border [0 0 0] ",
+					pl.x, pl.y, pl.x+pl.wd, pl.y-pl.ht)
+				if pl.link == 0 {
+					f.outf("/A <</S /URI /URI %s>>>>", f.textstring(pl.linkStr))
+				} else {
+					l := f.links[pl.link]
+					var sz SizeType
+					var h float64
+					sz, ok = f.pageSizes[l.page]
+					if ok {
+						h = sz.Ht
+					} else {
+						h = hPt
+					}
+					// dbg("h [%.2f], l.y [%.2f] f.k [%.2f]\n", h, l.y, f.k)
+					f.outf("/Dest [%d 0 R /XYZ 0 %.2f null]>>", 1+2*l.page, h-l.y*f.k)
+				}
+			}
+
+			for _, an := range f.pageAttachments[n] {
+				f.newobj()
+				annots = append(annots, fmt.Sprintf("%d 0 R ", f.n))
+				x1, y1, x2, y2 := an.x, an.y, an.x+an.w, an.y-an.h
+				as := fmt.Sprintf("<< /Type /XObject /Subtype /Form /BBox [%.2f %.2f %.2f %.2f] /Length 0 >>",
+					x1, y1, x2, y2)
+				as += "\nstream\nendstream"
+
+				f.outf("<< /Type /Annot /Subtype /FileAttachment /Rect [%.2f %.2f %.2f %.2f] /Border [0 0 0]\n",
+					x1, y1, x2, y2)
+				f.outf("/Contents %s ", f.textstring(utf8toutf16(an.Description)))
+				f.outf("/T %s ", f.textstring(utf8toutf16(an.Filename)))
+				f.outf("/AP << /N %s>>", as)
+				f.outf("/FS %d 0 R >>\n", an.objectNumber)
+			}
+		}
+
 		// Page
 		f.newobj()
 		pagesObjectNumbers[n] = f.n // save for /Kids
@@ -3905,34 +3959,14 @@ func (f *Fpdf) putpages() {
 		for t, pb := range f.pageBoxes[n] {
 			f.outf("/%s [%.2f %.2f %.2f %.2f]", t, pb.X, pb.Y, pb.Wd, pb.Ht)
 		}
-		f.out("/Resources 2 0 R")
-		// Links
-		if len(f.pageLinks[n])+len(f.pageAttachments[n]) > 0 {
-			var annots fmtBuffer
-			annots.printf("/Annots [")
-			for _, pl := range f.pageLinks[n] {
-				annots.printf("<</Type /Annot /Subtype /Link /Rect [%.2f %.2f %.2f %.2f] /Border [0 0 0] ",
-					pl.x, pl.y, pl.x+pl.wd, pl.y-pl.ht)
-				if pl.link == 0 {
-					annots.printf("/A <</S /URI /URI %s>>>>", f.textstring(pl.linkStr))
-				} else {
-					l := f.links[pl.link]
-					var sz SizeType
-					var h float64
-					sz, ok = f.pageSizes[l.page]
-					if ok {
-						h = sz.Ht
-					} else {
-						h = hPt
-					}
-					// dbg("h [%.2f], l.y [%.2f] f.k [%.2f]\n", h, l.y, f.k)
-					annots.printf("/Dest [%d 0 R /XYZ 0 %.2f null]>>", 1+2*l.page, h-l.y*f.k)
-				}
+		if len(annots) > 0 {
+			f.out("/Annots [ ")
+			for _, ref := range annots {
+				f.out(ref)
 			}
-			f.putAttachmentAnnotationLinks(&annots, n)
-			annots.printf("]")
-			f.out(annots.String())
+			f.out("] ")
 		}
+		f.out("/Resources 2 0 R")
 		if f.pdfVersion > "1.3" {
 			f.out("/Group <</Type /Group /S /Transparency /CS /DeviceRGB>>")
 		}

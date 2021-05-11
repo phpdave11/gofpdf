@@ -553,6 +553,7 @@ type Fpdf struct {
 	links            []intLinkType              // array of internal links
 	attachments      []Attachment               // slice of content to embed globally
 	pageAttachments  [][]annotationAttach       // 1-based array of annotation for file attachments (per page)
+	highlights       [][]Highlight              // 1-based array of array of highlight annotations (per page)
 	outlines         []outlineType              // array of outlines
 	outlineRoot      int                        // root of outlines
 	autoPageBreak    bool                       // automatic page breaking
