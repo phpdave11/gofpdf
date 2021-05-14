@@ -40,7 +40,7 @@ func (h *Highlight) String() string {
 	}
 
 	hlstr += fmt.Sprintf("/Rect %.4f", h.Rect)
-	hlstr += "]>>"
+	hlstr += ">>"
 	return hlstr
 }
 

@@ -3962,7 +3962,9 @@ func (f *Fpdf) putpages() {
 		if len(annots) > 0 {
 			f.out("/Annots [ ")
 			for _, ref := range annots {
-				f.out(ref)
+				if ref != "" {
+					f.out(ref)
+				}
 			}
 			f.out("] ")
 		}
