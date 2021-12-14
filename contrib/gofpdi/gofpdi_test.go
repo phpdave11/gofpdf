@@ -2,11 +2,12 @@ package gofpdi
 
 import (
 	"bytes"
-	"github.com/phpdave11/gofpdf"
-	"github.com/phpdave11/gofpdf/internal/example"
 	"io"
 	"sync"
 	"testing"
+
+	"github.com/phpdave11/gofpdf"
+	"github.com/phpdave11/gofpdf/internal/example"
 )
 
 func ExampleNewImporter() {
@@ -20,7 +21,7 @@ func ExampleNewImporter() {
 	imp := NewImporter()
 
 	// import first page and determine page sizes
-	tpl := imp.ImportPageFromStream(pdf, &rs, 1, "/MediaBox")
+	tpl := imp.ImportPageFromStream(pdf, rs, 1, "/MediaBox")
 	pageSizes := imp.GetPageSizes()
 	nrPages := len(imp.GetPageSizes())
 
@@ -28,7 +29,7 @@ func ExampleNewImporter() {
 	for i := 1; i <= nrPages; i++ {
 		pdf.AddPage()
 		if i > 1 {
-			tpl = imp.ImportPageFromStream(pdf, &rs, i, "/MediaBox")
+			tpl = imp.ImportPageFromStream(pdf, rs, i, "/MediaBox")
 		}
 		imp.UseImportedTemplate(pdf, tpl, 0, 0, pageSizes[i]["/MediaBox"]["w"], pageSizes[i]["/MediaBox"]["h"])
 	}
@@ -51,7 +52,7 @@ func TestGofpdiConcurrent(t *testing.T) {
 			pdf.AddPage()
 			rs, _ := getTemplatePdf()
 			imp := NewImporter()
-			tpl := imp.ImportPageFromStream(pdf, &rs, 1, "/MediaBox")
+			tpl := imp.ImportPageFromStream(pdf, rs, 1, "/MediaBox")
 			imp.UseImportedTemplate(pdf, tpl, 0, 0, 210.0, 297.0)
 			// write to bytes buffer
 			buf := bytes.Buffer{}

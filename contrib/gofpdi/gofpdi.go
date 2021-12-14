@@ -9,8 +9,9 @@ however that use of the default Importer is not thread safe.
 package gofpdi
 
 import (
-	realgofpdi "github.com/phpdave11/gofpdi"
 	"io"
+
+	realgofpdi "github.com/phpdave11/gofpdi"
 )
 
 // gofpdiPdf is a partial interface that only implements the functions we need
@@ -49,7 +50,7 @@ func (i *Importer) ImportPage(f gofpdiPdf, sourceFile string, pageno int, box st
 // (/MediaBox, TrimBox, /ArtBox, /CropBox, or /BleedBox). Returns a template id
 // that can be used with UseImportedTemplate to draw the template onto the
 // page.
-func (i *Importer) ImportPageFromStream(f gofpdiPdf, rs *io.ReadSeeker, pageno int, box string) int {
+func (i *Importer) ImportPageFromStream(f gofpdiPdf, rs io.ReadSeeker, pageno int, box string) int {
 	// Set source stream for fpdi
 	i.fpdi.SetSourceStream(rs)
 	// return template id
@@ -120,7 +121,7 @@ func ImportPage(f gofpdiPdf, sourceFile string, pageno int, box string) int {
 // that can be used with UseImportedTemplate to draw the template onto the
 // page.
 // Note: This uses the default Importer. Call NewImporter() to obtain a custom Importer.
-func ImportPageFromStream(f gofpdiPdf, rs *io.ReadSeeker, pageno int, box string) int {
+func ImportPageFromStream(f gofpdiPdf, rs io.ReadSeeker, pageno int, box string) int {
 	return fpdi.ImportPageFromStream(f, rs, pageno, box)
 }
 
