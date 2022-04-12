@@ -28,7 +28,8 @@ var pathCmdSub *strings.Replacer
 
 func init() {
 	// Handle permitted constructions like "100L200,230"
-	pathCmdSub = strings.NewReplacer(",", " ",
+	pathCmdSub = strings.NewReplacer(
+		",", " ", "-", " -",
 		"L", " L ", "l", " l ",
 		"C", " C ", "c", " c ",
 		"M", " M ", "m", " m ",
