@@ -63,16 +63,138 @@ const (
 )
 
 const (
+	// PageSizeA0 represents DIN/ISO A0 page size
+	PageSizeA0 = "A0"
+	// PageSizeA1 represents DIN/ISO A1 page size
+	PageSizeA1 = "A1"
+	// PageSizeA2 represents DIN/ISO A2 page size
+	PageSizeA2 = "A2"
 	// PageSizeA3 represents DIN/ISO A3 page size
 	PageSizeA3 = "A3"
 	// PageSizeA4 represents DIN/ISO A4 page size
 	PageSizeA4 = "A4"
 	// PageSizeA5 represents DIN/ISO A5 page size
 	PageSizeA5 = "A5"
+	// PageSizeA6 represents DIN/ISO A6 page size
+	PageSizeA6 = "A6"
+	// PageSizeA7 represents DIN/ISO A7 page size
+	PageSizeA7 = "A7"
+	// PageSizeA8 represents DIN/ISO A8 page size
+	PageSizeA8 = "A8"
+	// PageSizeA9 represents DIN/ISO A9 page size
+	PageSizeA9 = "A9"
+	// PageSizeA10 represents DIN/ISO A10 page size
+	PageSizeA10 = "A10"
+	// PageSizeB0 represents DIN/ISO B0 page size
+	PageSizeB0 = "B0"
+	// PageSizeB1 represents DIN/ISO B1 page size
+	PageSizeB1 = "B1"
+	// PageSizeB2 represents DIN/ISO B2 page size
+	PageSizeB2 = "B2"
+	// PageSizeB3 represents DIN/ISO B3 page size
+	PageSizeB3 = "B3"
+	// PageSizeB4 represents DIN/ISO B4 page size
+	PageSizeB4 = "B4"
+	// PageSizeB5 represents DIN/ISO B5 page size
+	PageSizeB5 = "B5"
+	// PageSizeB6 represents DIN/ISO B6 page size
+	PageSizeB6 = "B6"
+	// PageSizeB7 represents DIN/ISO B7 page size
+	PageSizeB7 = "B7"
+	// PageSizeB8 represents DIN/ISO B8 page size
+	PageSizeB8 = "B8"
+	// PageSizeB9 represents DIN/ISO B9 page size
+	PageSizeB9 = "B9"
+	// PageSizeB10 represents DIN/ISO B10 page size
+	PageSizeB10 = "B10"
+	// PageSizeC0 represents DIN/ISO C0 page size
+	PageSizeC0 = "C0"
+	// PageSizeC1 represents DIN/ISO C1 page size
+	PageSizeC1 = "C1"
+	// PageSizeC2 represents DIN/ISO C2 page size
+	PageSizeC2 = "C2"
+	// PageSizeC3 represents DIN/ISO C3 page size
+	PageSizeC3 = "C3"
+	// PageSizeC4 represents DIN/ISO C4 page size
+	PageSizeC4 = "C4"
+	// PageSizeC5 represents DIN/ISO C5 page size
+	PageSizeC5 = "C5"
+	// PageSizeC6 represents DIN/ISO C6 page size
+	PageSizeC6 = "C6"
+	// PageSizeC7 represents DIN/ISO C7 page size
+	PageSizeC7 = "C7"
+	// PageSizeC8 represents DIN/ISO C8 page size
+	PageSizeC8 = "C8"
+	// PageSizeC9 represents DIN/ISO C9 page size
+	PageSizeC9 = "C9"
+	// PageSizeC10 represents DIN/ISO C10 page size
+	PageSizeC10 = "C10"
+	// PageSizeJISA0 represents JIS A0 page size (Japanese Industrial Standard)
+	PageSizeJISA0 = "JISA0"
+	// PageSizeJISA1 represents JIS A1 page size (Japanese Industrial Standard)
+	PageSizeJISA1 = "JISA1"
+	// PageSizeJISA2 represents JIS A2 page size (Japanese Industrial Standard)
+	PageSizeJISA2 = "JISA2"
+	// PageSizeJISA3 represents JIS A3 page size (Japanese Industrial Standard)
+	PageSizeJISA3 = "JISA3"
+	// PageSizeJISA4 represents JIS A4 page size (Japanese Industrial Standard)
+	PageSizeJISA4 = "JISA4"
+	// PageSizeJISA5 represents JIS A5 page size (Japanese Industrial Standard)
+	PageSizeJISA5 = "JISA5"
+	// PageSizeJISA6 represents JIS A6 page size (Japanese Industrial Standard)
+	PageSizeJISA6 = "JISA6"
+	// PageSizeJISA7 represents JIS A7 page size (Japanese Industrial Standard)
+	PageSizeJISA7 = "JISA7"
+	// PageSizeJISA8 represents JIS A8 page size (Japanese Industrial Standard)
+	PageSizeJISA8 = "JISA8"
+	// PageSizeJISA9 represents JIS A9 page size (Japanese Industrial Standard)
+	PageSizeJISA9 = "JISA9"
+	// PageSizeJISA10 represents JIS A10 page size (Japanese Industrial Standard)
+	PageSizeJISA10 = "JISA10"
+	// PageSizeJISB0 represents JIS B0 page size (Japanese Industrial Standard)
+	PageSizeJISB0 = "JISB0"
+	// PageSizeJISB1 represents JIS B1 page size (Japanese Industrial Standard)
+	PageSizeJISB1 = "JISB1"
+	// PageSizeJISB2 represents JIS B2 page size (Japanese Industrial Standard)
+	PageSizeJISB2 = "JISB2"
+	// PageSizeJISB3 represents JIS B3 page size (Japanese Industrial Standard)
+	PageSizeJISB3 = "JISB3"
+	// PageSizeJISB4 represents JIS B4 page size (Japanese Industrial Standard)
+	PageSizeJISB4 = "JISB4"
+	// PageSizeJISB5 represents JIS B5 page size (Japanese Industrial Standard)
+	PageSizeJISB5 = "JISB5"
+	// PageSizeJISB6 represents JIS B6 page size (Japanese Industrial Standard)
+	PageSizeJISB6 = "JISB6"
+	// PageSizeJISB7 represents JIS B7 page size (Japanese Industrial Standard)
+	PageSizeJISB7 = "JISB7"
+	// PageSizeJISB8 represents JIS B8 page size (Japanese Industrial Standard)
+	PageSizeJISB8 = "JISB8"
+	// PageSizeExecutive represents US Executive page size
+	PageSizeExecutive = "Executive"
 	// PageSizeLetter represents US Letter page size
 	PageSizeLetter = "Letter"
 	// PageSizeLegal represents US Legal page size
 	PageSizeLegal = "Legal"
+	// PageSizeTabloid represents US Tabloid page size
+	PageSizeTabloid = "Tabloid"
+	// PageSizeLedger represents US Ledger page size
+	PageSizeLedger = "Ledger"
+	// PageSizeArchA represents US Architectural A page size
+	PageSizeArchA = "ArchA"
+	// PageSizeArchB represents US Architectural B page size
+	PageSizeArchB = "ArchB"
+	// PageSizeArchC represents US Architectural C page size
+	PageSizeArchC = "ArchC"
+	// PageSizeArchD represents US Architectural D page size
+	PageSizeArchD = "ArchD"
+	// PageSizeArchE represents US Architectural E page size
+	PageSizeArchE = "ArchE"
+	// PageSizeArchE1 represents US Architectural E1 page size
+	PageSizeArchE1 = "ArchE1"
+	// PageSizeArchE2 represents US Architectural E2 page size
+	PageSizeArchE2 = "ArchE2"
+	// PageSizeArchE3 represents US Architectural E3 page size
+	PageSizeArchE3 = "ArchE3"
 )
 
 const (
