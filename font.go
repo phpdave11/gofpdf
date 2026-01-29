@@ -344,7 +344,13 @@ func makeDefinitionFile(fileStr, tpStr, encodingFileStr string, embed bool, encL
 	// dump(def.Desc.FontBBox)
 	def.Up = info.UnderlinePosition
 	def.Ut = info.UnderlineThickness
-	def.Cw = info.Widths
+	// def.Cw = info.Widths
+	def.Cw = make(map[int]int)
+	for i, w := range info.Widths {
+		if w != 0 {
+			def.Cw[i] = w
+		}
+	}
 	def.Enc = baseNoExt(encodingFileStr)
 	// fmt.Printf("encodingFileStr [%s], def.Enc [%s]\n", encodingFileStr, def.Enc)
 	// fmt.Printf("reference [%s]\n", filepath.Join(filepath.Dir(encodingFileStr), "cp1252.map"))
