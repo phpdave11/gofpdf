@@ -20,7 +20,7 @@
 package gofpdf
 
 import (
-	"crypto/md5"
+	"crypto/sha256"
 	"crypto/rc4"
 	"encoding/binary"
 	"math/rand"
@@ -60,13 +60,13 @@ func (p *protectType) objectKey(n uint32) []byte {
 	binary.LittleEndian.PutUint32(nbuf, n)
 	b = append(b, p.encryptionKey...)
 	b = append(b, nbuf[0], nbuf[1], nbuf[2], 0, 0)
-	s := md5.Sum(b)
+	s := sha256.Sum256(b)
 	return s[0:10]
 }
 
 func oValueGen(userPass, ownerPass []byte) (v []byte) {
 	var c *rc4.Cipher
-	tmp := md5.Sum(ownerPass)
+	tmp := sha256.Sum256(ownerPass)
 	c, _ = rc4.NewCipher(tmp[0:5])
 	size := len(userPass)
 	v = make([]byte, size, size)
@@ -107,7 +107,7 @@ func (p *protectType) setProtection(privFlag byte, userPassStr, ownerPassStr str
 	buf = append(buf, userPass...)
 	buf = append(buf, p.oValue...)
 	buf = append(buf, privFlag, 0xff, 0xff, 0xff)
-	sum := md5.Sum(buf)
+	sum := sha256.Sum256(buf)
 	p.encryptionKey = sum[0:5]
 	p.uValue = p.uValueGen()
 	p.pValue = -(int(privFlag^255) + 1)
