@@ -6,12 +6,33 @@ import (
 	"unicode"
 )
 
+const (
+	PlaceholderRune rune = '_'
+)
+
+// CharacterWidth: Character (rune) widths ...
+func (f *Fpdf) CharacterWidth(c rune) int {
+
+	// Calculate width more safely ...
+	w := 0
+	ci := int(c)
+	if len(f.currentFont.Cw) > ci {
+		w = f.currentFont.Cw[ci]
+	} else if f.currentFont.utf8File != nil && len(f.currentFont.utf8File.CharWidths) > ci {
+		w = f.currentFont.utf8File.CharWidths[ci]
+	} else if c != PlaceholderRune {
+		// Fallback to the placeholder width ...
+		w = f.CharacterWidth(PlaceholderRune)
+	}
+
+	return w
+}
+
 // SplitText splits UTF-8 encoded text into several lines using the current
 // font. Each line has its length limited to a maximum width given by w. This
 // function can be used to determine the total height of wrapped text for
 // vertical placement purposes.
 func (f *Fpdf) SplitText(txt string, w float64) (lines []string) {
-	cw := f.currentFont.Cw
 	wmax := int(math.Ceil((w - 2*f.cMargin) * 1000 / f.fontSize))
 	s := []rune(txt) // Return slice of UTF-8 runes
 	nb := len(s)
@@ -25,7 +46,7 @@ func (f *Fpdf) SplitText(txt string, w float64) (lines []string) {
 	l := 0
 	for i < nb {
 		c := s[i]
-		l += cw[c]
+		l += f.CharacterWidth(c)
 		if unicode.IsSpace(c) || isChinese(c) {
 			sep = i
 		}
