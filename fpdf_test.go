@@ -182,6 +182,35 @@ func TestIssue0209SplitLinesEqualMultiCell(t *testing.T) {
 	}
 }
 
+func TestHighlightAnnotations(t *testing.T) {
+
+	var pdf *gofpdf.Fpdf
+
+	pdf = gofpdf.New("P", "mm", "A4", "")
+
+	pdf.AddPage()
+	pdf.SetFont("Times", "", 12)
+	ht := 4.0 //mm
+	pdf.Write(ht, lorem())
+
+	hl := gofpdf.Highlight{
+		Rect:       []float32{25.0, 750.0, 570.0, 820.0},
+		QuadPoints: []float32{25, 820, 570, 820, 25, 750, 570, 750},
+		Color:      []float32{1.0, 0.941, 0.4},
+		Opacity:    0.3,
+		Author:     "Fpdf",
+		Contents:   "Test highlight",
+	}
+
+	pdf.AddHighlightAnnotation(hl)
+
+	fileStr := example.Filename("Fpdf_HighlightAnnotations")
+	err := pdf.OutputFileAndClose(fileStr)
+	example.Summary(err, fileStr)
+	// Output:
+	// Successfully generated pdf/Fpdf_HighlightAnnotations.pdf
+}
+
 // TestFooterFuncLpi tests to make sure the footer is not call twice and SetFooterFuncLpi can work
 // without SetFooterFunc.
 func TestFooterFuncLpi(t *testing.T) {
