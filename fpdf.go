@@ -137,15 +137,72 @@ func fpdfNew(orientationStr, unitStr, sizeStr, fontDirStr string, size SizeType)
 	f.unitStr = unitStr
 	// Page sizes
 	f.stdPageSizes = make(map[string]SizeType)
+	f.stdPageSizes["a0"] = SizeType{2383.94, 3370.39}
+	f.stdPageSizes["a1"] = SizeType{1683.78, 2383.94}
+	f.stdPageSizes["a2"] = SizeType{1190.55, 1683.78}
 	f.stdPageSizes["a3"] = SizeType{841.89, 1190.55}
 	f.stdPageSizes["a4"] = SizeType{595.28, 841.89}
-	f.stdPageSizes["a5"] = SizeType{420.94, 595.28}
-	f.stdPageSizes["a6"] = SizeType{297.64, 420.94}
-	f.stdPageSizes["a2"] = SizeType{1190.55, 1683.78}
-	f.stdPageSizes["a1"] = SizeType{1683.78, 2383.94}
-	f.stdPageSizes["letter"] = SizeType{612, 792}
-	f.stdPageSizes["legal"] = SizeType{612, 1008}
-	f.stdPageSizes["tabloid"] = SizeType{792, 1224}
+	f.stdPageSizes["a5"] = SizeType{419.53, 595.28}
+	f.stdPageSizes["a6"] = SizeType{297.64, 419.53}
+	f.stdPageSizes["a7"] = SizeType{209.76, 297.64}
+	f.stdPageSizes["a8"] = SizeType{147.40, 209.76}
+	f.stdPageSizes["a9"] = SizeType{104.88, 147.40}
+	f.stdPageSizes["a10"] = SizeType{73.70, 104.88}
+	f.stdPageSizes["b0"] = SizeType{2834.65, 4007.64}
+	f.stdPageSizes["b1"] = SizeType{2003.82, 2834.65}
+	f.stdPageSizes["b2"] = SizeType{1417.32, 2003.82}
+	f.stdPageSizes["b3"] = SizeType{1000.94, 1417.32}
+	f.stdPageSizes["b4"] = SizeType{708.66, 1000.94}
+	f.stdPageSizes["b5"] = SizeType{498.90, 708.66}
+	f.stdPageSizes["b6"] = SizeType{354.33, 498.90}
+	f.stdPageSizes["b7"] = SizeType{250.63, 354.33}
+	f.stdPageSizes["b8"] = SizeType{177.17, 250.63}
+	f.stdPageSizes["b9"] = SizeType{125.27, 177.17}
+	f.stdPageSizes["b10"] = SizeType{88.58, 125.27}
+	f.stdPageSizes["c0"] = SizeType{2599.37, 3676.85}
+	f.stdPageSizes["c1"] = SizeType{1836.85, 2599.37}
+	f.stdPageSizes["c2"] = SizeType{1298.27, 1836.85}
+	f.stdPageSizes["c3"] = SizeType{918.46, 1298.27}
+	f.stdPageSizes["c4"] = SizeType{649.13, 918.46}
+	f.stdPageSizes["c5"] = SizeType{459.29, 649.13}
+	f.stdPageSizes["c6"] = SizeType{323.15, 459.29}
+	f.stdPageSizes["c7"] = SizeType{227.22, 323.15}
+	f.stdPageSizes["c8"] = SizeType{161.57, 227.22}
+	f.stdPageSizes["c9"] = SizeType{113.39, 161.57}
+	f.stdPageSizes["c10"] = SizeType{79.37, 113.39}
+	f.stdPageSizes["jisa0"] = SizeType{2383.94, 3370.39}
+	f.stdPageSizes["jisa1"] = SizeType{1683.78, 2383.94}
+	f.stdPageSizes["jisa2"] = SizeType{1190.55, 1683.78}
+	f.stdPageSizes["jisa3"] = SizeType{841.89, 1190.55}
+	f.stdPageSizes["jisa4"] = SizeType{595.28, 841.89}
+	f.stdPageSizes["jisa5"] = SizeType{419.53, 595.28}
+	f.stdPageSizes["jisa6"] = SizeType{297.64, 419.53}
+	f.stdPageSizes["jisa7"] = SizeType{209.76, 297.64}
+	f.stdPageSizes["jisa8"] = SizeType{147.40, 209.76}
+	f.stdPageSizes["jisa9"] = SizeType{104.88, 147.40}
+	f.stdPageSizes["jisa10"] = SizeType{73.70, 104.88}
+	f.stdPageSizes["jisb0"] = SizeType{2919.72, 4127.05}
+	f.stdPageSizes["jisb1"] = SizeType{2063.56, 2919.72}
+	f.stdPageSizes["jisb2"] = SizeType{1459.85, 2063.56}
+	f.stdPageSizes["jisb3"] = SizeType{1031.78, 1459.85}
+	f.stdPageSizes["jisb4"] = SizeType{728.50, 1031.78}
+	f.stdPageSizes["jisb5"] = SizeType{515.89, 728.50}
+	f.stdPageSizes["jisb6"] = SizeType{364.25, 515.89}
+	f.stdPageSizes["jisb7"] = SizeType{257.48, 364.25}
+	f.stdPageSizes["jisb8"] = SizeType{181.42, 257.48}
+	f.stdPageSizes["executive"] = SizeType{522.00, 756.00}
+	f.stdPageSizes["letter"] = SizeType{612.00, 792.00}
+	f.stdPageSizes["legal"] = SizeType{612.00, 1008.00}
+	f.stdPageSizes["tabloid"] = SizeType{792.00, 1224.00}
+	f.stdPageSizes["ledger"] = SizeType{792.00, 1224.00}
+	f.stdPageSizes["arch-a"] = SizeType{259.84, 367.85}
+	f.stdPageSizes["arch-b"] = SizeType{367.85, 561.26}
+	f.stdPageSizes["arch-c"] = SizeType{561.26, 792.50}
+	f.stdPageSizes["arch-d"] = SizeType{792.50, 1224.72}
+	f.stdPageSizes["arch-e"] = SizeType{1224.72, 1584.00}
+	f.stdPageSizes["arch-e1"] = SizeType{792.00, 1224.00}
+	f.stdPageSizes["arch-e2"] = SizeType{612.00, 792.00}
+	f.stdPageSizes["arch-e3"] = SizeType{1728.00, 2736.00}
 	if size.Wd > 0 && size.Ht > 0 {
 		f.defPageSize = size
 	} else {
@@ -2925,7 +2982,7 @@ func (f *Fpdf) WriteLinkID(h float64, displayStr string, linkID int) {
 //
 // width indicates the width of the box the text will be drawn in. This is in
 // the unit of measure specified in New(). If it is set to 0, the bounding box
-//of the page will be taken (pageWidth - leftMargin - rightMargin).
+// of the page will be taken (pageWidth - leftMargin - rightMargin).
 //
 // lineHeight indicates the line height in the unit of measure specified in
 // New().
