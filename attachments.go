@@ -101,7 +101,8 @@ func (f Fpdf) getEmbeddedFiles() string {
 type annotationAttach struct {
 	*Attachment
 
-	x, y, w, h float64 // fpdf coordinates (y diff and scaling done)
+	x, y, w, h             float64 // fpdf coordinates (y diff and scaling done)
+	appearanceObjectNumber int
 }
 
 // AddAttachmentAnnotation puts a link on the current page, on the rectangle
@@ -131,7 +132,16 @@ func (f *Fpdf) putAnnotationsAttachments() {
 	// avoid duplication
 	m := map[*Attachment]bool{}
 	for _, l := range f.pageAttachments {
-		for _, an := range l {
+		for i, an := range l {
+			// always add appearance stream
+			x1, y1, x2, y2 := an.x, an.y, an.x+an.w, an.y-an.h
+			f.newobj()
+			f.outf("<< /Type /XObject /Subtype /Form /BBox [%.2f %.2f %.2f %.2f] /Length 0 >>",
+				x1, y1, x2, y2)
+			f.out("stream")
+			f.out("endstream")
+			f.out("endobj")
+			l[i].appearanceObjectNumber = f.n
 			if m[an.Attachment] { // already embedded
 				continue
 			}
@@ -143,15 +153,11 @@ func (f *Fpdf) putAnnotationsAttachments() {
 func (f *Fpdf) putAttachmentAnnotationLinks(out *fmtBuffer, page int) {
 	for _, an := range f.pageAttachments[page] {
 		x1, y1, x2, y2 := an.x, an.y, an.x+an.w, an.y-an.h
-		as := fmt.Sprintf("<< /Type /XObject /Subtype /Form /BBox [%.2f %.2f %.2f %.2f] /Length 0 >>",
-			x1, y1, x2, y2)
-		as += "\nstream\nendstream"
-
 		out.printf("<< /Type /Annot /Subtype /FileAttachment /Rect [%.2f %.2f %.2f %.2f] /Border [0 0 0]\n",
 			x1, y1, x2, y2)
 		out.printf("/Contents %s ", f.textstring(utf8toutf16(an.Description)))
 		out.printf("/T %s ", f.textstring(utf8toutf16(an.Filename)))
-		out.printf("/AP << /N %s>>", as)
+		out.printf("/AP << /N %d 0 R >> ", an.appearanceObjectNumber)
 		out.printf("/FS %d 0 R >>\n", an.objectNumber)
 	}
 }
