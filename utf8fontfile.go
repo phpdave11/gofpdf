@@ -34,6 +34,41 @@ const symbol2x2 = 1 << 7
 // CID map Init
 const toUnicode = "/CIDInit /ProcSet findresource begin\n12 dict begin\nbegincmap\n/CIDSystemInfo\n<</Registry (Adobe)\n/Ordering (UCS)\n/Supplement 0\n>> def\n/CMapName /Adobe-Identity-UCS def\n/CMapType 2 def\n1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n1 beginbfrange\n<0000> <FFFF> <0000>\nendbfrange\nendcmap\nCMapName currentdict /CMap defineresource pop\nend\nend"
 
+// ColorRecord represents an RGBA color from the CPAL table
+type ColorRecord struct {
+	R, G, B, A uint8
+}
+
+// LayerRecord represents a single layer in a COLR glyph
+type LayerRecord struct {
+	GlyphID      uint16
+	PaletteIndex uint16
+}
+
+// BaseGlyphRecord maps a base glyph to its color layers
+type BaseGlyphRecord struct {
+	GlyphID       uint16
+	FirstLayerIdx uint16
+	NumLayers     uint16
+}
+
+// COLRTable holds parsed COLR table data
+type COLRTable struct {
+	Version             uint16
+	BaseGlyphRecords    []BaseGlyphRecord
+	LayerRecords        []LayerRecord
+	BaseGlyphListOffset int
+	LayerListOffset     int
+	ClipListOffset      int
+}
+
+// CPALTable holds parsed CPAL table data
+type CPALTable struct {
+	NumPaletteEntries uint16
+	NumPalettes       uint16
+	ColorRecords      []ColorRecord
+}
+
 type utf8FontFile struct {
 	fileReader           *fileReader
 	LastRune             int
@@ -51,10 +86,13 @@ type utf8FontFile struct {
 	Flags                int
 	UnderlinePosition    float64
 	UnderlineThickness   float64
-	CharWidths           []int
+	CharWidths           map[int]int
 	DefaultWidth         float64
 	symbolData           map[int]map[string][]int
 	CodeSymbolDictionary map[int]int
+	colrTable            *COLRTable
+	cpalTable            *CPALTable
+	hasColorGlyphs       bool
 }
 
 type tableDescription struct {
@@ -189,7 +227,7 @@ func (utf *utf8FontFile) skip(delta int) {
 	_, _ = utf.fileReader.seek(int64(delta), 1)
 }
 
-//SeekTable position
+// SeekTable position
 func (utf *utf8FontFile) SeekTable(name string) int {
 	return utf.seekTable(name, 0)
 }
@@ -332,7 +370,7 @@ func (utf *utf8FontFile) parseNAMETable() int {
 	return format
 }
 
-func (utf *utf8FontFile) parseHEADTable() {
+func (utf *utf8FontFile) parseHEADTable() int {
 	utf.SeekTable("head")
 	utf.skip(18)
 	utf.fontElementSize = utf.readUint16()
@@ -344,12 +382,13 @@ func (utf *utf8FontFile) parseHEADTable() {
 	yMax := utf.readInt16()
 	utf.Bbox = fontBoxType{int(float64(xMin) * scale), int(float64(yMin) * scale), int(float64(xMax) * scale), int(float64(yMax) * scale)}
 	utf.skip(3 * 2)
-	_ = utf.readUint16()
+	indexToLocFormat := utf.readUint16()
 	symbolDataFormat := utf.readUint16()
 	if symbolDataFormat != 0 {
 		fmt.Printf("Unknown symbol data format %d\n", symbolDataFormat)
-		return
+		return 0
 	}
+	return indexToLocFormat
 }
 
 func (utf *utf8FontFile) parseHHEATable() int {
@@ -456,13 +495,17 @@ func (utf *utf8FontFile) parseCMAPTable(format int) int {
 		coded := utf.readUint16()
 		position := utf.readUint32()
 		oldReaderPosition := utf.fileReader.readerPosition
-		if (system == 3 && coded == 1) || system == 0 { // Microsoft, Unicode
+		// System 3: Windows
+		// Coded 1: Unicode BMP (UCS-2)
+		// Coded 10: Unicode Full (UCS-4)
+		if (system == 3 && (coded == 1 || coded == 10)) || system == 0 {
 			format = utf.getUint16(cmapPosition + position)
-			if format == 4 {
-				if cidCMAPPosition == 0 {
-					cidCMAPPosition = cmapPosition + position
-				}
+			if format == 12 {
+				cidCMAPPosition = cmapPosition + position
 				break
+			}
+			if format == 4 {
+				cidCMAPPosition = cmapPosition + position
 			}
 		}
 		utf.seek(int(oldReaderPosition))
@@ -474,13 +517,305 @@ func (utf *utf8FontFile) parseCMAPTable(format int) int {
 	return cidCMAPPosition
 }
 
+// parseCOLRTable parses the COLR (Color) table for color glyph definitions
+func (utf *utf8FontFile) parseCOLRTable() {
+	if utf.tableDescriptions["COLR"] == nil {
+		return
+	}
+
+	utf.SeekTable("COLR")
+	version := uint16(utf.readUint16())
+	fmt.Printf("COLR version: %d\n", version)
+	// if version > 0 {
+	// 	// Only COLR v0 is supported for now
+	// 	return
+	// }
+
+	numBaseGlyphRecords := utf.readUint16()
+	baseGlyphRecordsOffset := utf.readUint32()
+	layerRecordsOffset := utf.readUint32()
+	numLayerRecords := utf.readUint16()
+
+	colr := &COLRTable{
+		Version:          version,
+		BaseGlyphRecords: make([]BaseGlyphRecord, numBaseGlyphRecords),
+		LayerRecords:     make([]LayerRecord, numLayerRecords),
+	}
+
+	if version == 1 {
+		colr.BaseGlyphListOffset = utf.readUint32()
+		colr.LayerListOffset = utf.readUint32()
+		colr.ClipListOffset = utf.readUint32()
+	}
+
+	// Parse base glyph records
+	tableStart := utf.tableDescriptions["COLR"].position
+	utf.seek(tableStart + baseGlyphRecordsOffset)
+	for i := 0; i < int(numBaseGlyphRecords); i++ {
+		colr.BaseGlyphRecords[i] = BaseGlyphRecord{
+			GlyphID:       uint16(utf.readUint16()),
+			FirstLayerIdx: uint16(utf.readUint16()),
+			NumLayers:     uint16(utf.readUint16()),
+		}
+	}
+
+	// Parse layer records
+	utf.seek(tableStart + layerRecordsOffset)
+	for i := 0; i < int(numLayerRecords); i++ {
+		colr.LayerRecords[i] = LayerRecord{
+			GlyphID:      uint16(utf.readUint16()),
+			PaletteIndex: uint16(utf.readUint16()),
+		}
+	}
+
+	utf.colrTable = colr
+}
+
+// parseCPALTable parses the CPAL (Color Palette) table
+func (utf *utf8FontFile) parseCPALTable() {
+	if utf.tableDescriptions["CPAL"] == nil {
+		return
+	}
+
+	utf.SeekTable("CPAL")
+	version := utf.readUint16()
+	numPaletteEntries := uint16(utf.readUint16())
+	numPalettes := uint16(utf.readUint16())
+	numColorRecords := utf.readUint16()
+	colorRecordsArrayOffset := utf.readUint32()
+
+	// Skip palette entry labels offset array (one uint16 per palette)
+	// For v0, we just need the first palette
+
+	cpal := &CPALTable{
+		NumPaletteEntries: numPaletteEntries,
+		NumPalettes:       numPalettes,
+		ColorRecords:      make([]ColorRecord, numColorRecords),
+	}
+
+	// Parse color records (BGRA format in the font file)
+	tableStart := utf.tableDescriptions["CPAL"].position
+	utf.seek(tableStart + colorRecordsArrayOffset)
+	for i := 0; i < int(numColorRecords); i++ {
+		data := utf.fileReader.Read(4)
+		// CPAL stores colors as BGRA
+		cpal.ColorRecords[i] = ColorRecord{
+			B: data[0],
+			G: data[1],
+			R: data[2],
+			A: data[3],
+		}
+	}
+
+	utf.cpalTable = cpal
+	_ = version // version is read but not used yet (v0 and v1 have same color record format)
+}
+
+// GetColorGlyphLayers returns the color layers for a glyph, or nil if not a color glyph
+func (utf *utf8FontFile) GetColorGlyphLayers(glyphID uint16) []LayerRecord {
+	if utf.colrTable == nil {
+		return nil
+	}
+
+	// 1. Try V0 records
+	if len(utf.colrTable.BaseGlyphRecords) > 0 {
+		records := utf.colrTable.BaseGlyphRecords
+		lo, hi := 0, len(records)-1
+		for lo <= hi {
+			mid := (lo + hi) / 2
+			if records[mid].GlyphID == glyphID {
+				firstIdx := records[mid].FirstLayerIdx
+				numLayers := records[mid].NumLayers
+				return utf.colrTable.LayerRecords[firstIdx : firstIdx+numLayers]
+			}
+			if records[mid].GlyphID < glyphID {
+				lo = mid + 1
+			} else {
+				hi = mid - 1
+			}
+		}
+	}
+
+	// 2. Try V1 records if available
+	if utf.colrTable.Version == 1 && utf.colrTable.BaseGlyphListOffset != 0 {
+		return utf.getV1Layers(glyphID)
+	}
+
+	return nil
+}
+
+func (utf *utf8FontFile) getV1Layers(glyphID uint16) []LayerRecord {
+	colrStart := utf.tableDescriptions["COLR"].position
+	listStart := colrStart + utf.colrTable.BaseGlyphListOffset
+
+	utf.seek(listStart)
+	numRecords := utf.readUint32()
+	
+	// Binary search in V1 BaseGlyphList
+	lo, hi := 0, int(numRecords)-1
+	recordSize := 6 // GlyphID(2) + PaintOffset(4)
+	
+	for lo <= hi {
+		mid := (lo + hi) / 2
+		utf.seek(listStart + 4 + mid*recordSize)
+		gid := uint16(utf.readUint16())
+		
+		if gid == glyphID {
+			paintOffset := utf.readUint32()
+			absPaintOffset := listStart + int(paintOffset)
+			return utf.parseV1Paint(absPaintOffset, colrStart, 0)
+		}
+		if gid < glyphID {
+			lo = mid + 1
+		} else {
+			hi = mid - 1
+		}
+	}
+	
+	return nil
+}
+
+func (utf *utf8FontFile) parseV1Paint(offset, colrStart, depth int) []LayerRecord {
+	if depth > 10 {
+		return nil
+	}
+	
+	utf.seek(offset)
+	val := utf.readUint16()
+	format := uint8(val >> 8)
+
+	if format == 1 { // PaintColrLayers
+		// Format(1), NumLayers(1), FirstLayerIndex(4)
+		numLayers := uint8(val & 0xFF)
+		firstLayerIndex := utf.readUint32()
+		
+		layerListStart := colrStart + utf.colrTable.LayerListOffset
+		utf.seek(layerListStart)
+		numTotalLayers := utf.readUint32()
+		
+		if uint32(firstLayerIndex)+uint32(numLayers) > uint32(numTotalLayers) {
+			return nil
+		}
+		
+		layers := make([]LayerRecord, 0, numLayers)
+		
+		// Iterate layers
+		for i := 0; i < int(numLayers); i++ {
+			idx := int(firstLayerIndex) + i
+			utf.seek(layerListStart + 4 + idx*4)
+			paintOffset := utf.readUint32()
+			
+			// Recurse
+			subLayers := utf.parseV1Paint(layerListStart+int(paintOffset), colrStart, depth+1)
+			if subLayers != nil {
+				layers = append(layers, subLayers...)
+			}
+		}
+		return layers
+	} else if format == 10 { // PaintGlyph
+		// Format(1), PaintOffset(3), GlyphID(2)
+		pOffsetHigh := uint32(val & 0xFF)
+		pOffsetLow := uint16(utf.readUint16())
+		paintOffset := (pOffsetHigh << 16) | uint32(pOffsetLow)
+		glyphID := uint16(utf.readUint16())
+		
+		// Get color from sub-paint
+		paletteIdx := utf.parseV1Color(offset + int(paintOffset), 0)
+		
+		return []LayerRecord{{
+			GlyphID:      glyphID,
+			PaletteIndex: paletteIdx,
+		}}
+	} else if format == 12 || format == 14 { // PaintRotate or PaintTranslate
+		// Format(1), PaintOffset(3), ...
+		pOffsetHigh := uint32(val & 0xFF)
+		pOffsetLow := uint16(utf.readUint16())
+		paintOffset := (pOffsetHigh << 16) | uint32(pOffsetLow)
+		
+		// Follow sub-paint (ignoring transform)
+		return utf.parseV1Paint(offset + int(paintOffset), colrStart, depth+1)
+	}
+	
+	return nil
+}
+
+func (utf *utf8FontFile) parseV1Color(offset, depth int) uint16 {
+	if depth > 10 {
+		return 0xFFFF
+	}
+	utf.seek(offset)
+	val := utf.readUint16()
+	format := uint8(val >> 8)
+	
+	if format == 2 { // PaintSolid
+		// Format(1), PaletteIndex(2)
+		utf.seek(offset + 1)
+		return uint16(utf.readUint16())
+	} else if format == 4 || format == 6 { // Linear or Radial Gradient
+		// Format(1), ColorLineOffset(3), ...
+		pOffsetHigh := uint32(val & 0xFF)
+		pOffsetLow := uint16(utf.readUint16())
+		colorLineOffset := (pOffsetHigh << 16) | uint32(pOffsetLow)
+		
+		// Read ColorLine
+		clOffset := offset + int(colorLineOffset)
+		utf.seek(clOffset)
+		// Extend(1), NumStops(2)
+		// We need to read byte then uint16.
+		// utf.readUint16 reads 2 bytes.
+		// First byte is Extend.
+		// Next 2 bytes is NumStops.
+		_ = utf.readUint16() // Extend + NumStopsHigh? No.
+		// Structure: extend(1), numStops(2). Total 3 bytes.
+		utf.seek(clOffset + 1)
+		numStops := utf.readUint16()
+		
+		if numStops > 0 {
+			// ColorStop: StopOffset(2), PaletteIndex(2), Alpha(2)
+			// First stop at offset + 3 + 0*6 + 2 (to get PaletteIndex)
+			utf.seek(clOffset + 3 + 2)
+			return uint16(utf.readUint16())
+		}
+	} else if format >= 12 && format <= 30 { // Transform/Translate/Rotate/Skew...
+		// Format(1), PaintOffset(3)
+		pOffsetHigh := uint32(val & 0xFF)
+		pOffsetLow := uint16(utf.readUint16())
+		paintOffset := (pOffsetHigh << 16) | uint32(pOffsetLow)
+		return utf.parseV1Color(offset+int(paintOffset), depth+1)
+	}
+	return 0xFFFF // Invalid/Fallback
+}
+
+// GetPaletteColor returns the color at the given palette index
+func (utf *utf8FontFile) GetPaletteColor(paletteIndex uint16) ColorRecord {
+	if utf.cpalTable == nil || int(paletteIndex) >= len(utf.cpalTable.ColorRecords) {
+		return ColorRecord{R: 0, G: 0, B: 0, A: 255}
+	}
+	return utf.cpalTable.ColorRecords[paletteIndex]
+}
+
+// HasColorGlyphs returns true if the font has color glyph data
+func (utf *utf8FontFile) HasColorGlyphs() bool {
+	return utf.hasColorGlyphs
+}
+
+// GetUnitsPerEm returns the font's units per em
+func (utf *utf8FontFile) GetUnitsPerEm() int {
+	return utf.fontElementSize
+}
+
 func (utf *utf8FontFile) parseTables() {
 	f := utf.parseNAMETable()
-	utf.parseHEADTable()
+	LocaFormat := utf.parseHEADTable()
 	n := utf.parseHHEATable()
 	w := utf.parseOS2Table()
 	utf.parsePOSTTable(w)
 	runeCMAPPosition := utf.parseCMAPTable(f)
+
+	// Parse color tables (COLR/CPAL)
+	utf.parseCOLRTable()
+	utf.parseCPALTable()
+	utf.hasColorGlyphs = utf.colrTable != nil && utf.cpalTable != nil
 
 	utf.SeekTable("maxp")
 	utf.skip(4)
@@ -490,8 +825,13 @@ func (utf *utf8FontFile) parseTables() {
 	charSymbolDictionary := make(map[int]int)
 	utf.generateSCCSDictionaries(runeCMAPPosition, symbolCharDictionary, charSymbolDictionary)
 
+	// Save the dictionary to the struct
+	utf.charSymbolDictionary = charSymbolDictionary
+
 	scale := 1000.0 / float64(utf.fontElementSize)
 	utf.parseHMTXTable(n, numSymbols, symbolCharDictionary, scale)
+	
+	utf.parseLOCATable(LocaFormat, numSymbols)
 }
 
 func (utf *utf8FontFile) generateCMAP() map[int][]int {
@@ -504,11 +844,14 @@ func (utf *utf8FontFile) generateCMAP() map[int][]int {
 		coder := utf.readUint16()
 		position := utf.readUint32()
 		oldPosition := utf.fileReader.readerPosition
-		if (system == 3 && coder == 1) || system == 0 {
+		if (system == 3 && (coder == 1 || coder == 10)) || system == 0 {
 			format := utf.getUint16(cmapPosition + position)
-			if format == 4 {
+			if format == 12 {
 				runeCmapPosition = cmapPosition + position
 				break
+			}
+			if format == 4 {
+				runeCmapPosition = cmapPosition + position
 			}
 		}
 		utf.seek(int(oldPosition))
@@ -531,13 +874,26 @@ func (utf *utf8FontFile) generateCMAP() map[int][]int {
 func (utf *utf8FontFile) parseSymbols(usedRunes map[int]int) (map[int]int, map[int]int, map[int]int, []int) {
 	symbolCollection := map[int]int{0: 0}
 	charSymbolPairCollection := make(map[int]int)
-	for _, char := range usedRunes {
+	for cid, char := range usedRunes {
 		if _, OK := utf.charSymbolDictionary[char]; OK {
-			symbolCollection[utf.charSymbolDictionary[char]] = char
-			charSymbolPairCollection[char] = utf.charSymbolDictionary[char]
+			glyphID := utf.charSymbolDictionary[char]
+			symbolCollection[glyphID] = char
+			charSymbolPairCollection[cid] = glyphID
 
+			// If this is a color glyph, also include all layer glyphs
+			if utf.hasColorGlyphs {
+				layers := utf.GetColorGlyphLayers(uint16(glyphID))
+				for _, layer := range layers {
+					layerGlyphID := int(layer.GlyphID)
+					if _, exists := symbolCollection[layerGlyphID]; !exists {
+						// Add layer glyph with a placeholder rune value
+						// The layer glyphs don't need to be mapped to Unicode chars
+						symbolCollection[layerGlyphID] = 0
+					}
+				}
+			}
 		}
-		utf.LastRune = max(utf.LastRune, char)
+		utf.LastRune = max(utf.LastRune, cid)
 	}
 
 	begin := utf.tableDescriptions["glyf"].position
@@ -635,7 +991,7 @@ func (utf *utf8FontFile) generateCMAPTable(cidSymbolPairCollection map[int]int, 
 	return cmapstr
 }
 
-//GenerateCutFont fill utf8FontFile from .utf file, only with runes from usedRunes
+// GenerateCutFont fill utf8FontFile from .utf file, only with runes from usedRunes
 func (utf *utf8FontFile) GenerateCutFont(usedRunes map[int]int) []byte {
 	utf.fileReader.readerPosition = 0
 	utf.symbolPosition = make([]int, 0)
@@ -647,6 +1003,11 @@ func (utf *utf8FontFile) GenerateCutFont(usedRunes map[int]int) []byte {
 	utf.skip(4)
 	utf.LastRune = 0
 	utf.generateTableDescriptions()
+
+	// Parse color tables if present (needed for including layer glyphs in subsetting)
+	utf.parseCOLRTable()
+	utf.parseCPALTable()
+	utf.hasColorGlyphs = utf.colrTable != nil && utf.cpalTable != nil
 
 	utf.SeekTable("head")
 	utf.skip(50)
@@ -836,7 +1197,7 @@ func (utf *utf8FontFile) parseHMTXTable(numberOfHMetrics, numSymbols int, symbol
 	start := utf.SeekTable("hmtx")
 	arrayWidths := 0
 	var arr []int
-	utf.CharWidths = make([]int, 256*256)
+	utf.CharWidths = make(map[int]int)
 	charCount := 0
 	arr = unpackUint16Array(utf.getRange(start, numberOfHMetrics*4))
 	for symbol := 0; symbol < numberOfHMetrics; symbol++ {
@@ -856,10 +1217,8 @@ func (utf *utf8FontFile) parseHMTXTable(numberOfHMetrics, numSymbols int, symbol
 					if widths == 0 {
 						widths = 65535
 					}
-					if char < 196608 {
-						utf.CharWidths[char] = widths
-						charCount++
-					}
+					utf.CharWidths[char] = widths
+					charCount++
 				}
 			}
 		}
@@ -874,10 +1233,8 @@ func (utf *utf8FontFile) parseHMTXTable(numberOfHMetrics, numSymbols int, symbol
 					if widths == 0 {
 						widths = 65535
 					}
-					if char < 196608 {
-						utf.CharWidths[char] = widths
-						charCount++
-					}
+					utf.CharWidths[char] = widths
+					charCount++
 				}
 			}
 		}
@@ -922,6 +1279,29 @@ func (utf *utf8FontFile) parseLOCATable(format, numSymbols int) {
 }
 
 func (utf *utf8FontFile) generateSCCSDictionaries(runeCmapPosition int, symbolCharDictionary map[int][]int, charSymbolDictionary map[int]int) {
+	utf.seek(runeCmapPosition)
+	format := utf.readUint16()
+
+	if format == 12 {
+		utf.skip(2)          // reserved
+		_ = utf.readUint32() // length
+		utf.skip(4)          // language
+		nGroups := utf.readUint32()
+
+		for i := 0; i < int(nGroups); i++ {
+			startCharCode := int(utf.readUint32())
+			endCharCode := int(utf.readUint32())
+			startGlyphID := int(utf.readUint32())
+
+			for char := startCharCode; char <= endCharCode; char++ {
+				symbol := startGlyphID + (char - startCharCode)
+				charSymbolDictionary[char] = symbol
+				symbolCharDictionary[symbol] = append(symbolCharDictionary[symbol], char)
+			}
+		}
+		return
+	}
+
 	maxRune := 0
 	utf.seek(runeCmapPosition + 2)
 	size := utf.readUint16()
@@ -967,9 +1347,7 @@ func (utf *utf8FontFile) generateSCCSDictionaries(runeCmapPosition int, symbolCh
 				}
 			}
 			charSymbolDictionary[char] = symbol
-			if char < 196608 {
-				maxRune = max(char, maxRune)
-			}
+			maxRune = max(char, maxRune)
 			symbolCharDictionary[symbol] = append(symbolCharDictionary[symbol], char)
 		}
 	}

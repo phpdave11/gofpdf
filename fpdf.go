@@ -963,9 +963,10 @@ func (f *Fpdf) GetStringSymbolWidth(s string) int {
 		unicode := []rune(s)
 		for _, char := range unicode {
 			intChar := int(char)
-			if len(f.currentFont.Cw) >= intChar && f.currentFont.Cw[intChar] > 0 {
-				if f.currentFont.Cw[intChar] != 65535 {
-					w += f.currentFont.Cw[intChar]
+			width, ok := f.currentFont.Cw[intChar]
+			if ok && width > 0 {
+				if width != 65535 {
+					w += width
 				}
 			} else if f.currentFont.Desc.MissingWidth != 0 {
 				w += f.currentFont.Desc.MissingWidth
@@ -974,11 +975,22 @@ func (f *Fpdf) GetStringSymbolWidth(s string) int {
 			}
 		}
 	} else {
-		for _, ch := range []byte(s) {
-			if ch == 0 {
+		for _, char := range []byte(s) {
+			if char == 0 {
 				break
 			}
-			w += f.currentFont.Cw[ch]
+			ch := int(char)
+			if width, ok := f.currentFont.Cw[ch]; ok {
+				w += width
+			} else {
+				// Default behavior for non-existent char in map (should ideally not happen for byte fonts if properly initialized)
+				// Or assume missing width
+				if f.currentFont.Desc.MissingWidth != 0 {
+					w += f.currentFont.Desc.MissingWidth
+				} else {
+					w += 500
+				}
+			}
 		}
 	}
 	return w
@@ -1700,6 +1712,7 @@ func (f *Fpdf) addFont(familyStr, styleStr, fileStr string, isUTF8 bool) {
 		}
 		reader := fileReader{readerPosition: 0, array: utf8Bytes}
 		utf8File := newUTF8Font(&reader)
+		// fmt.Printf("File size: %d bytes\n", originalSize)
 		err = utf8File.parseFile()
 		if err != nil {
 			f.SetError(err)
@@ -1724,15 +1737,20 @@ func (f *Fpdf) addFont(familyStr, styleStr, fileStr string, isUTF8 bool) {
 			sbarr = makeSubsetRange(32)
 		}
 		def := fontDefType{
-			Tp:        Type,
-			Name:      fontKey,
-			Desc:      desc,
-			Up:        int(round(utf8File.UnderlinePosition)),
-			Ut:        round(utf8File.UnderlineThickness),
-			Cw:        utf8File.CharWidths,
-			usedRunes: sbarr,
-			File:      fileStr,
-			utf8File:  utf8File,
+			Tp:             Type,
+			Name:           fontKey,
+			Desc:           desc,
+			Up:             int(round(utf8File.UnderlinePosition)),
+			Ut:             round(utf8File.UnderlineThickness),
+			Cw:             utf8File.CharWidths,
+			usedRunes:      sbarr,
+			File:           fileStr,
+			utf8File:       utf8File,
+			runeToCid:      make(map[int]int),
+			HasColorGlyphs: utf8File.HasColorGlyphs(),
+		}
+		for cid, r := range sbarr {
+			def.runeToCid[r] = cid
 		}
 		def.i, _ = generateFontID(def)
 		f.fonts[fontKey] = def
@@ -1861,14 +1879,19 @@ func (f *Fpdf) addFontFromBytes(familyStr, styleStr string, jsonFileBytes, zFile
 			sbarr = makeSubsetRange(32)
 		}
 		def := fontDefType{
-			Tp:        Type,
-			Name:      fontkey,
-			Desc:      desc,
-			Up:        int(round(utf8File.UnderlinePosition)),
-			Ut:        round(utf8File.UnderlineThickness),
-			Cw:        utf8File.CharWidths,
-			utf8File:  utf8File,
-			usedRunes: sbarr,
+			Tp:             Type,
+			Name:           fontkey,
+			Desc:           desc,
+			Up:             int(round(utf8File.UnderlinePosition)),
+			Ut:             round(utf8File.UnderlineThickness),
+			Cw:             utf8File.CharWidths,
+			utf8File:       utf8File,
+			usedRunes:      sbarr,
+			runeToCid:      make(map[int]int),
+			HasColorGlyphs: utf8File.HasColorGlyphs(),
+		}
+		for cid, r := range sbarr {
+			def.runeToCid[r] = cid
 		}
 		def.i, _ = generateFontID(def)
 		f.fonts[fontkey] = def
@@ -2201,21 +2224,186 @@ func (f *Fpdf) Bookmark(txtStr string, level int, y float64) {
 	f.outlines = append(f.outlines, outlineType{text: txtStr, level: level, y: y, p: f.PageNo(), prev: -1, last: -1, next: -1, first: -1})
 }
 
+// SetColorEmojiEnabled enables or disables color emoji rendering.
+// When enabled and the current font has COLR/CPAL color glyph data,
+// emoji will be rendered as multi-colored vector paths.
+func (f *Fpdf) SetColorEmojiEnabled(enabled bool) {
+	f.colorEmojiEnabled = enabled
+}
+
+// HasColorEmoji returns true if the current font has color emoji support
+// and color emoji rendering is enabled.
+func (f *Fpdf) HasColorEmoji() bool {
+	return f.colorEmojiEnabled && f.currentFont.HasColorGlyphs
+}
+
+// isColorGlyph checks if a rune maps to a color glyph in the current font
+func (f *Fpdf) isColorGlyph(r rune) bool {
+	if !f.HasColorEmoji() || f.currentFont.utf8File == nil {
+		return false
+	}
+
+	// Get the glyph ID for this rune
+	glyphID, ok := f.currentFont.utf8File.charSymbolDictionary[int(r)]
+	if !ok {
+		return false
+	}
+
+	return f.currentFont.utf8File.GetColorGlyphLayers(uint16(glyphID)) != nil
+}
+
+// renderColorGlyph renders a single color glyph at the given position
+func (f *Fpdf) renderColorGlyph(r rune, x, y float64) string {
+	if f.currentFont.utf8File == nil {
+		return ""
+	}
+
+	glyphID, ok := f.currentFont.utf8File.charSymbolDictionary[int(r)]
+	if !ok {
+		return ""
+	}
+
+	renderer := NewColorEmojiRenderer(f.currentFont.utf8File)
+	// Pass flipped Y (distance from bottom) and user-unit font size
+	return renderer.RenderColorGlyph(uint16(glyphID), x, f.h-y, f.fontSize, f.k)
+}
+
+// textWithColorEmoji renders text that may contain color emoji
+func (f *Fpdf) textWithColorEmoji(x, y float64, txtStr string) {
+	if f.isRTL {
+		txtStr = reverseText(txtStr)
+		x -= f.GetStringWidth(txtStr)
+	}
+
+	var s strings.Builder
+	currentX := x
+
+	for _, r := range txtStr {
+		charWidth := f.GetStringWidth(string(r))
+
+		if f.isColorGlyph(r) {
+			// Render as color glyph (vector graphics)
+			colorPath := f.renderColorGlyph(r, currentX, y)
+			if colorPath != "" {
+				s.WriteString(colorPath)
+			}
+			
+			// Render as invisible text (for copy-paste)
+			// Mode 3: Neither fill nor stroke (invisible)
+			txt2 := f.escape(f.stringToCIDs(string(r)))
+			// Save state (q), Set Text Render Mode (3 Tr), Text Object, Restore (Q)
+			// Note: q/Q saves graphics state (including Tr).
+			// We place invisible text at same position.
+			invisibleTextOp := sprintf("q 3 Tr BT %.2f %.2f Td (%s) Tj ET Q", currentX*f.k, (f.h-y)*f.k, txt2)
+			s.WriteString(invisibleTextOp)
+		} else {
+			// Render as regular text
+			txt2 := f.escape(f.stringToCIDs(string(r)))
+			textOp := sprintf("BT %.2f %.2f Td (%s) Tj ET", currentX*f.k, (f.h-y)*f.k, txt2)
+			if f.colorFlag {
+				textOp = sprintf("q %s %s Q", f.color.text.str, textOp)
+			}
+			s.WriteString(textOp)
+			s.WriteString(" ")
+		}
+		currentX += charWidth
+	}
+
+	if f.underline && txtStr != "" {
+		s.WriteString(" ")
+		s.WriteString(f.dounderline(x, y, txtStr))
+	}
+	if f.strikeout && txtStr != "" {
+		s.WriteString(" ")
+		s.WriteString(f.dostrikeout(x, y, txtStr))
+	}
+
+	f.out(s.String())
+}
+
+// textContainsColorEmoji checks if a string contains any color emoji characters
+func (f *Fpdf) textContainsColorEmoji(txtStr string) bool {
+	for _, r := range txtStr {
+		if f.isColorGlyph(r) {
+			return true
+		}
+	}
+	return false
+}
+
+func (f *Fpdf) getOrAssignCID(r int) int {
+	if cid, ok := f.currentFont.runeToCid[r]; ok {
+		return cid
+	}
+
+	cid := r
+	// If the rune is in BMP and not already used as a CID for another rune (identity mapping), use it.
+	// But we must check if 'cid' is already occupied by a different rune?
+	// If runeToCid is empty initially, and usedRunes is empty.
+	// We want to prefer Identity.
+	// Check if this CID slot is free in usedRunes.
+	// Note: usedRunes[cid] = original_rune
+	if r < 0xFFFF {
+		if original, used := f.currentFont.usedRunes[r]; !used || original == r {
+			cid = r
+		} else {
+			cid = f.findNextFreeCID()
+		}
+	} else {
+		cid = f.findNextFreeCID()
+	}
+
+	f.currentFont.runeToCid[r] = cid
+	f.currentFont.usedRunes[cid] = r
+	return cid
+}
+
+func (f *Fpdf) findNextFreeCID() int {
+	// Start searching from PUA
+	start := 0xE000
+	for i := start; i < 0xFFFF; i++ {
+		if _, used := f.currentFont.usedRunes[i]; !used {
+			return i
+		}
+	}
+	// If PUA full, search from beginning?
+	for i := 32; i < 0xE000; i++ {
+		if _, used := f.currentFont.usedRunes[i]; !used {
+			return i
+		}
+	}
+	// Fallback to 0 if full (should panic?)
+	return 0
+}
+
+func (f *Fpdf) stringToCIDs(s string) string {
+	var b bytes.Buffer
+	for _, r := range s {
+		cid := f.getOrAssignCID(int(r))
+		b.WriteByte(byte(cid >> 8))
+		b.WriteByte(byte(cid))
+	}
+	return b.String()
+}
+
 // Text prints a character string. The origin (x, y) is on the left of the
 // first character at the baseline. This method permits a string to be placed
 // precisely on the page, but it is usually easier to use Cell(), MultiCell()
 // or Write() which are the standard methods to print text.
 func (f *Fpdf) Text(x, y float64, txtStr string) {
+	// Check if we need to handle color emoji
+	if f.isCurrentUTF8 && f.HasColorEmoji() && f.textContainsColorEmoji(txtStr) {
+		f.textWithColorEmoji(x, y, txtStr)
+		return
+	}
+
 	var txt2 string
 	if f.isCurrentUTF8 {
 		if f.isRTL {
 			txtStr = reverseText(txtStr)
 			x -= f.GetStringWidth(txtStr)
 		}
-		txt2 = f.escape(utf8toutf16(txtStr, false))
-		for _, uni := range []rune(txtStr) {
-			f.currentFont.usedRunes[int(uni)] = int(uni)
-		}
+		txt2 = f.escape(f.stringToCIDs(txtStr))
 	} else {
 		txt2 = f.escape(txtStr)
 	}
@@ -2424,10 +2612,10 @@ func (f *Fpdf) CellFormat(w, h float64, txtStr, borderStr string, ln int,
 				txtStr = reverseText(txtStr)
 			}
 			wmax := int(math.Ceil((w - 2*f.cMargin) * 1000 / f.fontSize))
-			for _, uni := range []rune(txtStr) {
-				f.currentFont.usedRunes[int(uni)] = int(uni)
-			}
-			space := f.escape(utf8toutf16(" ", false))
+			// for _, uni := range []rune(txtStr) {
+			// 	f.currentFont.usedRunes[int(uni)] = int(uni)
+			// }
+			space := f.escape(f.stringToCIDs(" "))
 			strSize := f.GetStringSymbolWidth(txtStr)
 			s.printf("BT 0 Tw %.2f %.2f Td [", (f.x+dx)*k, (f.h-(f.y+.5*h+.3*f.fontSize))*k)
 			t := strings.Split(txtStr, " ")
@@ -2435,7 +2623,7 @@ func (f *Fpdf) CellFormat(w, h float64, txtStr, borderStr string, ln int,
 			numt := len(t)
 			for i := 0; i < numt; i++ {
 				tx := t[i]
-				tx = "(" + f.escape(utf8toutf16(tx, false)) + ")"
+				tx = "(" + f.escape(f.stringToCIDs(tx)) + ")"
 				s.printf("%s ", tx)
 				if (i + 1) < numt {
 					s.printf("%.3f(%s) ", -shift, space)
@@ -2448,10 +2636,10 @@ func (f *Fpdf) CellFormat(w, h float64, txtStr, borderStr string, ln int,
 				if f.isRTL {
 					txtStr = reverseText(txtStr)
 				}
-				txt2 = f.escape(utf8toutf16(txtStr, false))
-				for _, uni := range []rune(txtStr) {
-					f.currentFont.usedRunes[int(uni)] = int(uni)
-				}
+				txt2 = f.escape(f.stringToCIDs(txtStr))
+				// for _, uni := range []rune(txtStr) {
+				// 	f.currentFont.usedRunes[int(uni)] = int(uni)
+				// }
 			} else {
 
 				txt2 = strings.Replace(txtStr, "\\", "\\\\", -1)
@@ -2545,7 +2733,7 @@ func (f *Fpdf) SplitLines(txt []byte, w float64) [][]byte {
 	l := 0
 	for i < nb {
 		c := s[i]
-		l += cw[c]
+		l += cw[int(c)]
 		if c == ' ' || c == '\t' || c == '\n' {
 			sep = i
 		}
@@ -2709,14 +2897,14 @@ func (f *Fpdf) MultiCell(w, h float64, txtStr, borderStr, alignStr string, fill 
 			ls = l
 			ns++
 		}
-		if int(c) >= len(cw) {
-			f.err = fmt.Errorf("character outside the supported range: %s", string(c))
-			return
-		}
-		if cw[int(c)] == 0 { //Marker width 0 used for missing symbols
+		// if int(c) >= len(cw) {
+		// 	f.err = fmt.Errorf("character outside the supported range: %s", string(c))
+		// 	return
+		// }
+		if width, ok := cw[int(c)]; !ok || width == 0 { //Marker width 0 used for missing symbols
 			l += f.currentFont.Desc.MissingWidth
-		} else if cw[int(c)] != 65535 { //Marker width 65535 used for zero width symbols
-			l += cw[int(c)]
+		} else if width != 65535 { //Marker width 65535 used for zero width symbols
+			l += width
 		}
 		if l > wmax {
 			// Automatic line break
@@ -2836,7 +3024,12 @@ func (f *Fpdf) write(h float64, txtStr string, link int, linkStr string) {
 		if c == ' ' {
 			sep = i
 		}
-		l += float64(cw[int(c)])
+		// l += float64(cw[int(c)])
+		if width, ok := cw[int(c)]; ok {
+			l += float64(width)
+		} else {
+			l += float64(f.currentFont.Desc.MissingWidth)
+		}
 		if l > wmax {
 			// Automatic line break
 			if sep == -1 {
@@ -2925,7 +3118,7 @@ func (f *Fpdf) WriteLinkID(h float64, displayStr string, linkID int) {
 //
 // width indicates the width of the box the text will be drawn in. This is in
 // the unit of measure specified in New(). If it is set to 0, the bounding box
-//of the page will be taken (pageWidth - leftMargin - rightMargin).
+// of the page will be taken (pageWidth - leftMargin - rightMargin).
 //
 // lineHeight indicates the line height in the unit of measure specified in
 // New().
@@ -4079,7 +4272,11 @@ func (f *Fpdf) putfonts() {
 				var s fmtBuffer
 				s.WriteString("[")
 				for j := 32; j < 256; j++ {
-					s.printf("%d ", font.Cw[j])
+					if width, ok := font.Cw[j]; ok {
+						s.printf("%d ", width)
+					} else {
+						s.WriteString("0 ")
+					}
 				}
 				s.WriteString("]")
 				f.out(s.String())
@@ -4200,16 +4397,24 @@ func (f *Fpdf) generateCIDFontMap(font *fontDefType, LastRune int) {
 
 	// for each character
 	for cid := startCid; cid < cwLen; cid++ {
-		if font.Cw[cid] == 0x00 {
+		runa, used := font.usedRunes[cid]
+		if cid > 255 && (!used || runa == 0) {
 			continue
 		}
-		width := font.Cw[cid]
+		if !used {
+			runa = cid
+		}
+
+		width, ok := font.Cw[runa]
+		if !ok || width == 0x00 {
+			continue
+		}
 		if width == 65535 {
 			width = 0
 		}
-		if numb, OK := font.usedRunes[cid]; cid > 255 && (!OK || numb == 0) {
-			continue
-		}
+		// if numb, OK := font.usedRunes[cid]; cid > 255 && (!OK || numb == 0) {
+		// 	continue
+		// }
 
 		if cid == prevCid+1 {
 			if width == prevWidth {

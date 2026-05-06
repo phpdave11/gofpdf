@@ -115,29 +115,16 @@ func utf8toutf16(s string, withBOM ...bool) string {
 	if bom {
 		res = append(res, 0xFE, 0xFF)
 	}
-	nb := len(s)
-	i := 0
-	for i < nb {
-		c1 := byte(s[i])
-		i++
-		switch {
-		case c1 >= 224:
-			// 3-byte character
-			c2 := byte(s[i])
-			i++
-			c3 := byte(s[i])
-			i++
-			res = append(res, ((c1&0x0F)<<4)+((c2&0x3C)>>2),
-				((c2&0x03)<<6)+(c3&0x3F))
-		case c1 >= 192:
-			// 2-byte character
-			c2 := byte(s[i])
-			i++
-			res = append(res, ((c1 & 0x1C) >> 2),
-				((c1&0x03)<<6)+(c2&0x3F))
-		default:
-			// Single-byte character
-			res = append(res, 0, c1)
+	for _, r := range s {
+		if r < 0x10000 {
+			// BMP character
+			res = append(res, byte(r>>8), byte(r))
+		} else {
+			// Supplementary character (needs surrogate pair)
+			r -= 0x10000
+			high := 0xD800 | (r >> 10)
+			low := 0xDC00 | (r & 0x3FF)
+			res = append(res, byte(high>>8), byte(high), byte(low>>8), byte(low))
 		}
 	}
 	return string(res)

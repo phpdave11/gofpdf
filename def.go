@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strconv"
 	"time"
 )
 
@@ -602,6 +603,7 @@ type Fpdf struct {
 	}
 	spotColorMap           map[string]spotColorType // Map of named ink-based colors
 	userUnderlineThickness float64                  // A custom user underline thickness multiplier.
+	colorEmojiEnabled      bool                     // Enable color emoji rendering
 }
 
 type encType struct {
@@ -697,22 +699,62 @@ type FontDescType struct {
 }
 
 type fontDefType struct {
-	Tp           string        // "Core", "TrueType", ...
-	Name         string        // "Courier-Bold", ...
-	Desc         FontDescType  // Font descriptor
-	Up           int           // Underline position
-	Ut           int           // Underline thickness
-	Cw           []int         // Character width by ordinal
-	Enc          string        // "cp1252", ...
-	Diff         string        // Differences from reference encoding
-	File         string        // "Redressed.z"
-	Size1, Size2 int           // Type1 values
-	OriginalSize int           // Size of uncompressed font file
-	N            int           // Set by font loader
-	DiffN        int           // Position of diff in app array, set by font loader
-	i            string        // 1-based position in font list, set by font loader, not this program
-	utf8File     *utf8FontFile // UTF-8 font
-	usedRunes    map[int]int   // Array of used runes
+	Tp             string        // "Core", "TrueType", ...
+	Name           string        // "Courier-Bold", ...
+	Desc           FontDescType  // Font descriptor
+	Up             int           // Underline position
+	Ut             int           // Underline thickness
+	Cw             map[int]int   // Character width by ordinal
+	Enc            string        // "cp1252", ...
+	Diff           string        // Differences from reference encoding
+	File           string        // "Redressed.z"
+	Size1, Size2   int           // Type1 values
+	OriginalSize   int           // Size of uncompressed font file
+	N              int           // Set by font loader
+	DiffN          int           // Position of diff in app array, set by font loader
+	i              string        // 1-based position in font list, set by font loader, not this program
+	utf8File       *utf8FontFile // UTF-8 font
+	usedRunes      map[int]int   // Array of used runes
+	runeToCid      map[int]int   // Map of rune to CID (for remapping)
+	nextFreeCID    int           // Next available CID for remapping
+	HasColorGlyphs bool          // True if font has COLR/CPAL color glyph data
+}
+
+// UnmarshalJSON handles both array (legacy) and map (new) formats for Cw
+func (f *fontDefType) UnmarshalJSON(data []byte) error {
+	type Alias fontDefType
+	aux := &struct {
+		Cw interface{}
+		*Alias
+	}{
+		Alias: (*Alias)(f),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	f.Cw = make(map[int]int)
+	if aux.Cw != nil {
+		switch v := aux.Cw.(type) {
+		case []interface{}:
+			for i, val := range v {
+				if fVal, ok := val.(float64); ok {
+					if fVal != 0 {
+						f.Cw[i] = int(fVal)
+					}
+				}
+			}
+		case map[string]interface{}:
+			for k, val := range v {
+				if fVal, ok := val.(float64); ok {
+					if i, err := strconv.Atoi(k); err == nil {
+						f.Cw[i] = int(fVal)
+					}
+				}
+			}
+		}
+	}
+	return nil
 }
 
 // generateFontID generates a font Id from the font definition
