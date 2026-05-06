@@ -348,6 +348,20 @@ func (f *Fpdf) SetCellMargin(margin float64) {
 	f.cMargin = margin
 }
 
+// SetCellStretchToFit sets the horizontal stretch to fit the entireity
+// of some text into of a cell of a given width.
+func (f *Fpdf) SetCellStretchToFit(w float64, txtStr string) {
+	stringW := f.GetStringWidth(txtStr)
+	margin := f.GetCellMargin()
+	ratio := (w - margin * 2) / stringW
+	f.outf("BT %.0f Tz ET", ratio * 100)
+}
+
+// ResetCellStretch resets the horizontal stretch to the default.
+func (f *Fpdf) ResetCellStretch(w float64, txtStr string) {
+	f.outf("BT 100 Tz ET")
+}
+
 // SetPageBoxRec sets the page box for the current page, and any following
 // pages. Allowable types are trim, trimbox, crop, cropbox, bleed, bleedbox,
 // art and artbox box types are case insensitive. See SetPageBox() for a method
